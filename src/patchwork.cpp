@@ -46,13 +46,20 @@ void callback_shutdown()
 {
     if(frames > 0)
     {
+        double pmean = std::accumulate(precision_vec.begin(), precision_vec.end(), 0.0) / precision_vec.size();
+        double pdev = std::sqrt(std::accumulate(precision_vec.begin(), precision_vec.end(), 0.0,[&](double acc, double x){ return acc + std::pow(x - pmean, 2); }) / precision_vec.size());
+        double rmean = std::accumulate(recall_vec.begin(), recall_vec.end(), 0.0) / recall_vec.size();
+        double rdev = std::sqrt(std::accumulate(recall_vec.begin(), recall_vec.end(), 0.0,[&](double acc, double x){ return acc + std::pow(x - rmean, 2); }) / recall_vec.size());
+        double f1mean = std::accumulate(f1_vec.begin(), f1_vec.end(), 0.0) / f1_vec.size();
+        double f1dev = std::sqrt(std::accumulate(f1_vec.begin(), f1_vec.end(), 0.0,[&](double acc, double x){ return acc + std::pow(x - f1mean, 2); }) / f1_vec.size());
+
         std::cout << std::endl << "------ METRICS -------" << std::endl;
         std::cout << "Number of frames: " << frames << std::endl;
         std::cout << "----------------------" << std::endl;
         std::cout.precision(4);
-        std::cout << "Precision: " << (std::accumulate(precision_vec.begin(), precision_vec.end(), 0.0) / precision_vec.size()) << " %" << std::endl;
-        std::cout << "Recall: " << (std::accumulate(recall_vec.begin(), recall_vec.end(), 0.0) / recall_vec.size()) << " %" << std::endl;
-        std::cout << "F1-Score: " << (std::accumulate(f1_vec.begin(), f1_vec.end(), 0.0) / f1_vec.size()) << " %" << std::endl;
+        std::cout << "Precision: " << pmean << " +/- " << pdev << " %" << std::endl;
+        std::cout << "Recall: " << rmean << " +/- " << rdev << " %" << std::endl;
+        std::cout << "F1-Score: " << f1mean << " +/- " << f1dev << " %" << std::endl;
         std::cout << "----------------------" << std::endl;
         std::cout << "Total points: " << static_cast<int>(std::accumulate(total_points_vec.begin(), total_points_vec.end(), 0.0) / total_points_vec.size()) << std::endl;
         std::cout << "Removed points: " << static_cast<int>(std::accumulate(removed_vec.begin(), removed_vec.end(), 0.0) / removed_vec.size()) << std::endl;
@@ -105,7 +112,7 @@ void handler (AlfaNode * node)
 
     // Estimation
     double precision, recall, precision_wo_veg, recall_wo_veg;
-    calculate_precision_recall(*input_cloud, pc_ground, precision, recall);
+    //calculate_precision_recall(*input_cloud, pc_ground, precision, recall);
     calculate_precision_recall_without_vegetation(*input_cloud, pc_ground, precision_wo_veg, recall_wo_veg);
 
     /*
@@ -116,8 +123,8 @@ void handler (AlfaNode * node)
     std::cout << "\033[1;32m P: " << precision_wo_veg << " | R: " << recall_wo_veg << "\033[0m" << endl;
     */
 
-    std::uint8_t r = 255, g = 0, b = 0;
-    uint32_t rgb = ((std::uint32_t)r << 16 | (std::uint32_t)g << 8 | (std::uint32_t)b);
+   std::uint8_t r = 255, g = 0, b = 0;
+   uint32_t rgb = ((std::uint32_t)r << 16 | (std::uint32_t)g << 8 | (std::uint32_t)b);
     for (const auto& point : pc_ground.points) // PUBLISH
     {
         pcl::PointXYZRGB p;
@@ -129,7 +136,6 @@ void handler (AlfaNode * node)
 
         node->push_point_output_cloud(p);
     }
-
     r = 0;
     g = 255;
     rgb = ((std::uint32_t)r << 16 | (std::uint32_t)g << 8 | (std::uint32_t)b);
@@ -143,7 +149,7 @@ void handler (AlfaNode * node)
         p.rgb = *reinterpret_cast<float*>(&rgb);
         node->push_point_output_cloud(p);
     }
-
+    std::cout << input_cloud->size() << " = " << pc_ground.size() << " + " << pc_non_ground.size() << std::endl;
     //metrics(precision, recall, input_cloud->size(), pc_ground.size());
     metrics(precision_wo_veg, recall_wo_veg, input_cloud->size(), pc_ground.size());
 }
@@ -224,8 +230,9 @@ int main(int argc, char **argv)
     rclcpp::on_shutdown(&callback_shutdown);
     //rclcpp::spin(std::make_shared<AlfaNode>("/velodyne_points","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
     //rclcpp::spin(std::make_shared<AlfaNode>("/cloud_ply","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
-    //rclcpp::spin(std::make_shared<AlfaNode>("/kitti/point_cloud","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
-    rclcpp::spin(std::make_shared<AlfaNode>("/kitti/velo/pointcloud","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
+    //rclcpp::spin(std::make_shared<AlfaNode>("/cloud_pcd","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
+    rclcpp::spin(std::make_shared<AlfaNode>("/kitti/point_cloud","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
+    //rclcpp::spin(std::make_shared<AlfaNode>("/kitti/velo/pointcloud","patchwork", parameters, 0, AlfaHardwareSupport{false, false}, 1, 1, &handler, &post_processing));
     rclcpp::shutdown();
     return 0;
 }

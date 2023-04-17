@@ -1,5 +1,5 @@
-#ifndef PATCHWORKeee_H
-#define PATCHWORKeee_H
+#ifndef PATCHWORK_H
+#define PATCHWORK_H
 
 #include <iostream>
 #include "sensor_msgs/msg/point_cloud2.hpp"
@@ -10,6 +10,7 @@
 #include <pcl/io/pcd_io.h>
 #include <chrono>
 #include <time.h>
+#include <cmath>
 #include "utils.hpp"
 
 #define MARKER_Z_VALUE -2.2
@@ -490,7 +491,7 @@ void PatchWork<PointT>::estimate_ground(
                 if (zone[ring_idx][sector_idx].points.size() > num_min_pts_) {
                     //double t_tmp0 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
                     
-                                                        /* Region-wise Ground Plane Fitting */
+                                                  /* Region-wise Ground Plane Fitting using PCA */
                     // Region-wise sorting is adopted
                     sort(zone[ring_idx][sector_idx].points.begin(), zone[ring_idx][sector_idx].end(), point_z_cmp<PointT>);
                     //double t_tmp1 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -502,7 +503,14 @@ void PatchWork<PointT>::estimate_ground(
                                                         /* Ground Likelihood Estimation */
                     // Status of each patch
                     // used in checking uprightness, elevation, and flatness, respectively
-                    const double ground_z_vec       = abs(normal_(2, 0));
+                    const double v3 = normal_(2,0);
+                    const double ground_z_vec  = abs(normal_(2, 0));
+                    const double uprightness, elevation, flatness;
+                    uprightness = ( (v3 / abs(v3)) > cos((M_PI_2 - uprightness_thr_)) ) ? 1.0 : 0.0;
+
+                    const double z_mean = pc_mean_(2,0);
+                    elevation = 
+
                     const double ground_z_elevation = pc_mean_(2, 0);
                     const double surface_variable   =
                                          singular_values_.minCoeff() /
