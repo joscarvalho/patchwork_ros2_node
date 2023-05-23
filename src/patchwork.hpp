@@ -10,6 +10,9 @@
 #include <pcl/io/pcd_io.h>
 #include <chrono>
 #include <time.h>
+#include <unordered_map>
+#include <string>
+#include <variant>
 #include "utils.hpp"
 
 #define MARKER_Z_VALUE -2.2
@@ -44,49 +47,51 @@ public:
     typedef std::vector<pcl::PointCloud<PointT> > Ring;
     typedef std::vector<Ring>                     Zone;
 
-    PatchWork() {
+    PatchWork(){
         // Init ROS related
         //ROS_INFO("Inititalizing PatchWork...");
 
-        //sensor_height_ = 1.723;
-        sensor_height_ = 0;
-        verbose_ = false;
+        variableMap = {
+            {"verbose_", &verbose_},
+            {"ATAT_ON_", &ATAT_ON_},
+            {"max_r_for_ATAT_", &max_r_for_ATAT_},
+            {"num_sectors_for_ATAT_", &num_sectors_for_ATAT_},
+            {"noise_bound_", &noise_bound_},
+            {"num_iter_", &num_iter_},
+            {"num_lpr_", &num_lpr_},
+            {"num_min_pts_", &num_min_pts_},
+            {"num_zones_", &num_zones_},
+            {"num_rings_", &num_rings_},
+            {"num_sectors_", &num_sectors_},
+            {"num_rings_of_interest_", &num_rings_of_interest_},
+            {"sensor_height_", &sensor_height_},
+            {"th_seeds_", &th_seeds_},
+            {"th_dist_", &th_dist_},
+            {"max_range_", &max_range_},
+            {"min_range_", &min_range_},
+            {"uprightness_thr_", &uprightness_thr_},
+            {"adaptive_seed_selection_margin_", &adaptive_seed_selection_margin_},
+            {"min_range_z2_", &min_range_z2_},
+            {"min_range_z3_", &min_range_z3_},
+            {"min_range_z4_", &min_range_z4_},
+            {"using_global_thr_", &using_global_thr_},
+            {"global_elevation_thr_", &global_elevation_thr_},
+        };
 
-        ATAT_ON_ = false;
-        max_r_for_ATAT_ = 5.0;
-        num_sectors_for_ATAT_ = 20;
-        noise_bound_ = 0.2;
+        visualize_ = false;
+    }
 
-        num_iter_ = 3;
-        num_lpr_ = 20;
-        num_min_pts_ = 10;
-        th_seeds_ = 0.4;
-        th_dist_ = 0.3;
-        max_range_ = 80.0;
-        min_range_ = 2.7; // It indicates bodysize of the car.
-        num_rings_ = 30;
-        num_sectors_ = 108;
-        uprightness_thr_ = 0.5; // The larger, the more strict
-        adaptive_seed_selection_margin_ = -1.1; // The more larger, the more soft
-
-        // It is not in the paper
-        // It is also not matched our philosophy, but it is employed to reject some FPs easily & intuitively.
-        // For patchwork, it is only applied on Z3 and Z4
-        using_global_thr_ = false;
-        global_elevation_thr_ = 0.0;
-
+    void initialize()
+    {
         // CZM denotes 'Concentric Zone Model'. Please refer to our paper
-        num_zones_ = 4;
         num_sectors_each_zone_ = {16, 32, 54, 32};
         num_rings_each_zone_ = {2, 4, 4, 4};
-        min_ranges_ = {2.7, 12.3625, 22.025, 41.35};
         elevation_thr_ = {0.523, 0.746, 0.879, 1.125};
         flatness_thr_ = {0.0005, 0.000725, 0.001, 0.001};
 
-        check_input_parameters_are_correct();
+        min_ranges_ = {min_range_, min_range_z2_, min_range_z3_, min_range_z4_};
 
-        // It equals to elevation_thr_.size()/flatness_thr_.size();
-        num_rings_of_interest_ = elevation_thr_.size();
+        check_input_parameters_are_correct();
 
         revert_pc.reserve(NUM_HEURISTIC_MAX_PTS_IN_PATCH);
         ground_pc_.reserve(NUM_HEURISTIC_MAX_PTS_IN_PATCH);
@@ -94,22 +99,18 @@ public:
         regionwise_ground_.reserve(NUM_HEURISTIC_MAX_PTS_IN_PATCH);
         regionwise_nonground_.reserve(NUM_HEURISTIC_MAX_PTS_IN_PATCH);
 
-        min_range_z2_ = min_ranges_[1];
-        min_range_z3_ = min_ranges_[2];
-        min_range_z4_ = min_ranges_[3];
-
-        min_ranges_   = {min_range_, min_range_z2_, min_range_z3_, min_range_z4_};
-        ring_sizes_   = {(min_range_z2_ - min_range_) / num_rings_each_zone_.at(0),
-                         (min_range_z3_ - min_range_z2_) / num_rings_each_zone_.at(1),
-                         (min_range_z4_ - min_range_z3_) / num_rings_each_zone_.at(2),
-                         (max_range_ - min_range_z4_) / num_rings_each_zone_.at(3)};
+        min_ranges_ = {min_range_, min_range_z2_, min_range_z3_, min_range_z4_};
+        ring_sizes_ = {(min_range_z2_ - min_range_) / num_rings_each_zone_.at(0),
+                      (min_range_z3_ - min_range_z2_) / num_rings_each_zone_.at(1),
+                      (min_range_z4_ - min_range_z3_) / num_rings_each_zone_.at(2),
+                      (max_range_ - min_range_z4_) / num_rings_each_zone_.at(3)};
         sector_sizes_ = {2 * M_PI / num_sectors_each_zone_.at(0), 2 * M_PI / num_sectors_each_zone_.at(1),
-                         2 * M_PI / num_sectors_each_zone_.at(2),
-                         2 * M_PI / num_sectors_each_zone_.at(3)};
+                        2 * M_PI / num_sectors_each_zone_.at(2),
+                        2 * M_PI / num_sectors_each_zone_.at(3)};
 
-        for (int iter = 0; iter < num_zones_; ++iter) {
+        for (int i = 0; i < num_zones_; i++) {
             Zone z;
-            initialize_zone(z, num_sectors_each_zone_.at(iter), num_rings_each_zone_.at(iter));
+            initialize_zone(z, num_sectors_each_zone_[i], num_rings_each_zone_[i]);
             ConcentricZoneModel_.push_back(z);
         }
     }
@@ -119,6 +120,79 @@ public:
             pcl::PointCloud<PointT> &cloudOut,
             pcl::PointCloud<PointT> &cloudNonground,
             double &time_taken);
+
+    void update_parameters(const string parameter_name, const double parameter_value) {
+            auto iter = variableMap.find(parameter_name);
+            if (iter != variableMap.end()) {
+                auto& value = iter->second;
+                if (std::holds_alternative<int*>(value)) {
+                    *(std::get<int*>(value)) = static_cast<int>(parameter_value);
+                } else if (std::holds_alternative<double*>(value)) {
+                    *(std::get<double*>(value)) = parameter_value;
+                } else if (std::holds_alternative<bool*>(value)) {
+                    *(std::get<bool*>(value)) = static_cast<bool>(parameter_value);
+                }
+            }
+    }
+
+    void print_parameters(const string parameter_name) {
+            auto iter = variableMap.find(parameter_name);
+            if (iter != variableMap.end()) {
+                auto& value = iter->second;
+                if (std::holds_alternative<int*>(value)) {
+                    std::cout << *(std::get<int*>(value)) << std::endl;
+                } else if (std::holds_alternative<double*>(value)) {
+                    std::cout << *(std::get<double*>(value)) << std::endl;
+                } else if (std::holds_alternative<bool*>(value)) {
+                    std::cout << *(std::get<bool*>(value)) << std::endl;
+                }
+            }
+    }
+
+    void metrics(pcl::PointCloud<PointT> cloud_in,
+                pcl::PointCloud<PointT> &cloud_ground, pcl::PointCloud<PointT> &cloud_nonground, 
+                double &TP, double &FP, double &TN, double &FN) {
+
+        int ground_points = count_num_ground(cloud_in); // Nº pontos de chão na cloud original
+        int eTP = count_num_ground(cloud_ground); // Nº pontos de chão na cloud de chão - True Positives
+        int e_ground_outliers = count_num_outliers(cloud_ground); // Nº outliers na cloud de chão
+        int eFP = cloud_ground.size() - eTP - e_ground_outliers; // False Positives
+
+        int eFN = count_num_ground(cloud_nonground);
+        int e_non_ground_outliers = count_num_outliers(cloud_nonground);
+        int eTN = cloud_nonground.size() - eFN - e_non_ground_outliers;
+
+        TP = eTP;
+        FP = eFP;
+        TN = eTN;
+        FN = eFN;
+    }
+
+    void metrics_wo_vegetation(pcl::PointCloud<PointT> cloud_in,
+                pcl::PointCloud<PointT> &cloud_ground, pcl::PointCloud<PointT> &cloud_nonground, 
+                double &TP, double &FP, double &TN, double &FN) {
+
+        int num_veg = 0;
+        for (auto const& pt: cloud_ground.points)
+        {
+            if (pt.label == VEGETATION) num_veg++;
+        }
+
+        int ground_points = count_num_ground_without_vegetation(cloud_in); // Nº pontos de chão na cloud original
+        int eTP = count_num_ground_without_vegetation(cloud_ground); // Nº pontos de chão na cloud de chão - True Positives
+
+        int e_ground_outliers = count_num_outliers(cloud_ground); // Nº outliers na cloud de chão
+        int eFP = cloud_ground.size() - eTP - e_ground_outliers - num_veg; // False Positives
+
+        int eFN = count_num_ground_without_vegetation(cloud_nonground);
+        int e_non_ground_outliers = count_num_outliers(cloud_nonground);
+        int eTN = cloud_nonground.size() - eFN - e_non_ground_outliers - num_veg;
+
+        TP = eTP;
+        FP = eFP;
+        TN = eTN;
+        FN = eFN;
+    }
 
     //geometry_msgs::PolygonStamped set_plane_polygon(const MatrixXf &normal_v, const float &d);
 
@@ -176,6 +250,8 @@ private:
     vector<double> flatness_thr_;
 
     vector<Zone> ConcentricZoneModel_;
+
+    std::unordered_map<std::string, std::variant<int*, double*, bool*>> variableMap;
 
     //jsk_recognition_msgs::PolygonArray poly_list_;
 
@@ -439,24 +515,28 @@ void PatchWork<PointT>::estimate_ground(
         pcl::PointCloud<PointT> &cloud_out,
         pcl::PointCloud<PointT> &cloud_nonground,
         double &time_taken) {
+    
+    auto start = std::chrono::steady_clock::now();
 
     if (initialized_ && ATAT_ON_) {
         estimate_sensor_height(cloud_in);
         initialized_ = false;
     }
 
-    //static double start, t0, t1, t2, end;
+    auto ty = std::chrono::steady_clock::now();
 
-    double                  t_total_sort   = 0.0;
-    double                  t_total_ground   = 0.0;
-    double                  t_total_estimate = 0.0;
+    auto                  t_total_ground   = 0.0;
+    auto                  t_total_estimate = 0.0;
+    auto                  t_total_gle = 0.0;
+    auto                  t_total_sort = 0.0;
+
     // 1.Msg to pointcloud
     pcl::PointCloud<PointT> laserCloudIn;
     laserCloudIn = cloud_in;
 
-    //start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
-    //t0 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    auto t0 = std::chrono::steady_clock::now();
+
     // 2.Error point removal
     // As there are some error mirror reflection under the ground,
     // Sort point according to height, here uses z-axis in default
@@ -468,14 +548,15 @@ void PatchWork<PointT>::estimate_ground(
         }
     }
 
-    //t1 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    auto t1 = std::chrono::steady_clock::now();
+
     // 4. pointcloud -> regionwise setting
     for (int k = 0; k < num_zones_; ++k) {
         flush_patches_in_zone(ConcentricZoneModel_[k], num_sectors_each_zone_[k], num_rings_each_zone_[k]);
     }
     pc2czm(laserCloudIn, ConcentricZoneModel_);
 
-    //t2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    auto t2 = std::chrono::steady_clock::now();
 
     cloud_out.clear();
     cloud_nonground.clear();
@@ -488,18 +569,22 @@ void PatchWork<PointT>::estimate_ground(
         for (uint16_t ring_idx = 0; ring_idx < num_rings_each_zone_[k]; ++ring_idx) {
             for (uint16_t sector_idx = 0; sector_idx < num_sectors_each_zone_[k]; ++sector_idx) {
                 if (zone[ring_idx][sector_idx].points.size() > num_min_pts_) {
-                    //double t_tmp0 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    auto t_tmp0 = std::chrono::steady_clock::now();
                     
                                                         /* Region-wise Ground Plane Fitting */
                     // Region-wise sorting is adopted
                     sort(zone[ring_idx][sector_idx].points.begin(), zone[ring_idx][sector_idx].end(), point_z_cmp<PointT>);
-                    //double t_tmp1 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    auto t_tmp1 = std::chrono::steady_clock::now();
+                    
                     extract_piecewiseground(k, zone[ring_idx][sector_idx], regionwise_ground_, regionwise_nonground_);
-                    //double t_tmp2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                    //t_total_ground += t_tmp2 - t_tmp1;
-                    //t_total_sort += t_tmp1 - t_tmp0;
+                    auto t_tmpx = std::chrono::steady_clock::now();
+
+                    t_total_ground += std::chrono::duration_cast<std::chrono::microseconds>(t_tmpx - t_tmp1).count();
+                    t_total_sort += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp1 - t_tmp0).count();
 
                                                         /* Ground Likelihood Estimation */
+
+                    auto t_tmpk = std::chrono::steady_clock::now();
                     // Status of each patch
                     // used in checking uprightness, elevation, and flatness, respectively
                     const double ground_z_vec       = abs(normal_(2, 0));
@@ -508,7 +593,9 @@ void PatchWork<PointT>::estimate_ground(
                                          singular_values_.minCoeff() /
                                          (singular_values_(0) + singular_values_(1) + singular_values_(2));
 
-                    //double t_tmp2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    auto t_tmp2 = std::chrono::steady_clock::now();
+                    t_total_gle += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp2 - t_tmpk).count();
+
                     if (ground_z_vec < uprightness_thr_) {
                         // All points are rejected
                         cloud_nonground += regionwise_ground_;
@@ -535,27 +622,46 @@ void PatchWork<PointT>::estimate_ground(
                     // Every regionwise_nonground is considered nonground.
                     cloud_nonground += regionwise_nonground_;
 
-                    //double t_tmp3 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                    //t_total_estimate += t_tmp3 - t_tmp2;
+                    auto t_tmp3 = std::chrono::steady_clock::now();
+                    t_total_estimate += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp3 - t_tmp2).count();
                 }
             }
             ++concentric_idx;
         }
     }
-    // end                     = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    // time_taken              = end - start;
+    auto end                = std::chrono::steady_clock::now();
+    time_taken              = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-    // ofstream time_txt("/home/carvalho/Desktop/patchwork_time.txt", std::ios::app);
-    // time_txt << "Time taken : " << time_taken << endl;
-    // time_txt << "Time taken to sort: " << t0-start << endl;
-    // time_txt << "Time taken to remove error points: " << t1 - t0 << endl;
-    // time_txt << "Time taken to pc -> czm: " << t2-t1 << endl;
-    //std::cout << "Time to sort : " << t_total_sort << endl;
-    //std::cout << "Time taken to estimate : " << t_total_ground << endl;
-    //std::cout << "Time taken to pca : " << t_total_ground + t_total_sort << endl;
-    // time_txt << "Time taken to estimate: " << t_total_estimate << endl;
+    /*
+    ofstream t_taken ("time_taken.txt", std::ios_base::app);
+    ofstream atat ("atat.txt", std::ios_base::app);
+    ofstream error_point_removal ("error_point_removal.txt", std::ios_base::app);
+    ofstream czm ("czm.txt", std::ios_base::app);
+    ofstream sort ("sort.txt", std::ios_base::app);
+    ofstream pca ("pca.txt", std::ios_base::app);
+    ofstream gle ("gle.txt", std::ios_base::app);
 
-    // time_txt.close();
+    t_taken << time_taken / 1000 << endl;
+    atat << std::chrono::duration_cast<std::chrono::microseconds>(ty - start).count() / 1000 << endl;
+    error_point_removal << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000 << endl;
+    czm << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000 << endl;
+    sort << t_total_sort / 1000 << endl;
+    pca << t_total_ground / 1000 << endl;
+    gle << (t_total_estimate + t_total_gle) / 1000 << endl;
+
+    
+    std::cout << "Time to ATAT : " << std::chrono::duration_cast<std::chrono::microseconds>(ty - start).count() / 1000 << endl;
+    std::cout << "Time to pc->msg : " << std::chrono::duration_cast<std::chrono::microseconds>(t0 - ty).count() / 1000 << endl;
+    std::cout << "Time to error point removal : " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000 << endl;
+    std::cout << "Time to czm : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000 << endl;
+    std::cout << "Time to sort : " << t_total_sort / 1000 << endl;
+    std::cout << "Time taken to pca : " << t_total_ground / 1000 << endl;
+    std::cout << "Time taken to GLE variables : " << t_total_gle / 1000 << endl;
+    std::cout << "Time taken to estimate : " << t_total_estimate / 1000 << endl;
+    std::cout << "Total time taken : " << ( t_total_estimate + t_total_gle + t_total_ground + t_total_sort + std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+    + std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() + std::chrono::duration_cast<std::chrono::microseconds>(t0 - ty).count()
+    + std::chrono::duration_cast<std::chrono::microseconds>(ty - start).count() ) / 1000 << endl;
+    */
 }
 
 template<typename PointT>
@@ -682,6 +788,7 @@ void PatchWork<PointT>::check_input_parameters_are_correct() {
     int n_m = min_ranges_.size();
 
     if ((n_z != n_r) || (n_z != n_s) || (n_z != n_m)) {
+        cout << n_z << endl << n_r << endl << n_s << endl << n_m << endl;
         throw invalid_argument(SET_SAME_SIZES_OF_PARAMETERS);
     }
 
