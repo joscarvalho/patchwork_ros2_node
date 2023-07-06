@@ -13,7 +13,6 @@
 #include <unordered_map>
 #include <string>
 #include <variant>
-#include "utils.hpp"
 
 #define MARKER_Z_VALUE -2.2
 #define UPRIGHT_ENOUGH 0.55 // cyan
@@ -119,7 +118,12 @@ public:
             const pcl::PointCloud<PointT> &cloudIn,
             pcl::PointCloud<PointT> &cloudOut,
             pcl::PointCloud<PointT> &cloudNonground,
-            double &time_taken);
+            double &time_taken_ATAT,
+            double &time_taken_ERROR,
+            double &time_taken_CZM,
+            double &time_taken_SORT,
+            double &time_taken_RGPF,
+            double &time_taken_GLE);
 
     void update_parameters(const string parameter_name, const double parameter_value) {
             auto iter = variableMap.find(parameter_name);
@@ -147,51 +151,6 @@ public:
                     std::cout << *(std::get<bool*>(value)) << std::endl;
                 }
             }
-    }
-
-    void metrics(pcl::PointCloud<PointT> cloud_in,
-                pcl::PointCloud<PointT> &cloud_ground, pcl::PointCloud<PointT> &cloud_nonground, 
-                double &TP, double &FP, double &TN, double &FN) {
-
-        int ground_points = count_num_ground(cloud_in); // Nº pontos de chão na cloud original
-        int eTP = count_num_ground(cloud_ground); // Nº pontos de chão na cloud de chão - True Positives
-        int e_ground_outliers = count_num_outliers(cloud_ground); // Nº outliers na cloud de chão
-        int eFP = cloud_ground.size() - eTP - e_ground_outliers; // False Positives
-
-        int eFN = count_num_ground(cloud_nonground);
-        int e_non_ground_outliers = count_num_outliers(cloud_nonground);
-        int eTN = cloud_nonground.size() - eFN - e_non_ground_outliers;
-
-        TP = eTP;
-        FP = eFP;
-        TN = eTN;
-        FN = eFN;
-    }
-
-    void metrics_wo_vegetation(pcl::PointCloud<PointT> cloud_in,
-                pcl::PointCloud<PointT> &cloud_ground, pcl::PointCloud<PointT> &cloud_nonground, 
-                double &TP, double &FP, double &TN, double &FN) {
-
-        int num_veg = 0;
-        for (auto const& pt: cloud_ground.points)
-        {
-            if (pt.label == VEGETATION) num_veg++;
-        }
-
-        int ground_points = count_num_ground_without_vegetation(cloud_in); // Nº pontos de chão na cloud original
-        int eTP = count_num_ground_without_vegetation(cloud_ground); // Nº pontos de chão na cloud de chão - True Positives
-
-        int e_ground_outliers = count_num_outliers(cloud_ground); // Nº outliers na cloud de chão
-        int eFP = cloud_ground.size() - eTP - e_ground_outliers - num_veg; // False Positives
-
-        int eFN = count_num_ground_without_vegetation(cloud_nonground);
-        int e_non_ground_outliers = count_num_outliers(cloud_nonground);
-        int eTN = cloud_nonground.size() - eFN - e_non_ground_outliers - num_veg;
-
-        TP = eTP;
-        FP = eFP;
-        TN = eTN;
-        FN = eFN;
     }
 
     //geometry_msgs::PolygonStamped set_plane_polygon(const MatrixXf &normal_v, const float &d);
@@ -449,7 +408,7 @@ void PatchWork<PointT>::estimate_sensor_height(pcl::PointCloud<PointT> cloud_in)
     // ATAT: All-Terrain Automatic HeighT estimator
     Ring ring_for_ATAT(num_sectors_for_ATAT_);
     for (auto const &pt : cloud_in.points) {
-        int    ring_idx, sector_idx;
+        int   sector_idx;
         double r = xy2radius(pt.x, pt.y);
 
         float sector_size_for_ATAT = 2 * M_PI / num_sectors_for_ATAT_;
@@ -514,8 +473,20 @@ void PatchWork<PointT>::estimate_ground(
         const pcl::PointCloud<PointT> &cloud_in,
         pcl::PointCloud<PointT> &cloud_out,
         pcl::PointCloud<PointT> &cloud_nonground,
-        double &time_taken) {
+        double &time_taken_ATAT,
+        double &time_taken_ERROR,
+        double &time_taken_CZM,
+        double &time_taken_SORT,
+        double &time_taken_RGPF,
+        double &time_taken_GLE ) {
     
+    time_taken_ATAT = 0;
+    time_taken_ERROR = 0;
+    time_taken_CZM = 0;
+    time_taken_SORT = 0;
+    time_taken_RGPF = 0;
+    time_taken_GLE = 0;
+
     auto start = std::chrono::steady_clock::now();
 
     if (initialized_ && ATAT_ON_) {
@@ -524,11 +495,6 @@ void PatchWork<PointT>::estimate_ground(
     }
 
     auto ty = std::chrono::steady_clock::now();
-
-    auto                  t_total_ground   = 0.0;
-    auto                  t_total_estimate = 0.0;
-    auto                  t_total_gle = 0.0;
-    auto                  t_total_sort = 0.0;
 
     // 1.Msg to pointcloud
     pcl::PointCloud<PointT> laserCloudIn;
@@ -541,7 +507,7 @@ void PatchWork<PointT>::estimate_ground(
     // As there are some error mirror reflection under the ground,
     // Sort point according to height, here uses z-axis in default
     // -2.0 is a rough criteria
-    for (int i = 0; i < laserCloudIn.points.size(); i++) {
+    for (size_t i = 0; i < laserCloudIn.points.size(); i++) {
         if (laserCloudIn.points[i].z < -sensor_height_ - 2.0) {
             std::iter_swap(laserCloudIn.points.begin() + i, laserCloudIn.points.end() - 1);
             laserCloudIn.points.pop_back();
@@ -568,7 +534,7 @@ void PatchWork<PointT>::estimate_ground(
         auto zone = ConcentricZoneModel_[k];
         for (uint16_t ring_idx = 0; ring_idx < num_rings_each_zone_[k]; ++ring_idx) {
             for (uint16_t sector_idx = 0; sector_idx < num_sectors_each_zone_[k]; ++sector_idx) {
-                if (zone[ring_idx][sector_idx].points.size() > num_min_pts_) {
+                if ((int)zone[ring_idx][sector_idx].points.size() > num_min_pts_) {
                     auto t_tmp0 = std::chrono::steady_clock::now();
                     
                                                         /* Region-wise Ground Plane Fitting */
@@ -579,8 +545,8 @@ void PatchWork<PointT>::estimate_ground(
                     extract_piecewiseground(k, zone[ring_idx][sector_idx], regionwise_ground_, regionwise_nonground_);
                     auto t_tmpx = std::chrono::steady_clock::now();
 
-                    t_total_ground += std::chrono::duration_cast<std::chrono::microseconds>(t_tmpx - t_tmp1).count();
-                    t_total_sort += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp1 - t_tmp0).count();
+                    time_taken_RGPF += std::chrono::duration_cast<std::chrono::microseconds>(t_tmpx - t_tmp1).count();
+                    time_taken_SORT += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp1 - t_tmp0).count();
 
                                                         /* Ground Likelihood Estimation */
 
@@ -592,9 +558,6 @@ void PatchWork<PointT>::estimate_ground(
                     const double surface_variable   =
                                          singular_values_.minCoeff() /
                                          (singular_values_(0) + singular_values_(1) + singular_values_(2));
-
-                    auto t_tmp2 = std::chrono::steady_clock::now();
-                    t_total_gle += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp2 - t_tmpk).count();
 
                     if (ground_z_vec < uprightness_thr_) {
                         // All points are rejected
@@ -623,14 +586,17 @@ void PatchWork<PointT>::estimate_ground(
                     cloud_nonground += regionwise_nonground_;
 
                     auto t_tmp3 = std::chrono::steady_clock::now();
-                    t_total_estimate += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp3 - t_tmp2).count();
+                    time_taken_GLE += std::chrono::duration_cast<std::chrono::microseconds>(t_tmp3 - t_tmpk).count();
                 }
             }
             ++concentric_idx;
         }
     }
     auto end                = std::chrono::steady_clock::now();
-    time_taken              = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    
+    time_taken_ATAT = std::chrono::duration_cast<std::chrono::microseconds>(ty - start).count() / 1000;
+    time_taken_ERROR = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000;
+    time_taken_CZM = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000;
 
     /*
     ofstream t_taken ("time_taken.txt", std::ios_base::app);
