@@ -166,7 +166,8 @@ public:
             string user_defined_3 = "", 
             string user_defined_4 = "", 
             string user_defined_5 = "", 
-            string user_defined_6 = "");
+            string user_defined_6 = "",
+            string user_defined_7 = "");
 
     ~Metrics();
 
@@ -178,15 +179,13 @@ public:
                             float user_3 = 0,
                             float user_4 = 0,
                             float user_5 = 0,
-                            float user_6 = 0);
+                            float user_6 = 0,
+                            float user_7 = 0);
 
     void callback_shutdown();
 
-    void post_processing( alfa_msg::msg::AlfaMetrics &output_metrics,
-                          alfa_msg::msg::MetricMessage handler_time,
+    void post_processing( alfa_msg::msg::MetricMessage handler_time,
                           alfa_msg::msg::MetricMessage full_time);
-
-    int frames;
 
 private:
     float mean_vector(vector<float> v) { return std::accumulate(v.begin(), v.end(), 0.0) / v.size(); }
@@ -203,6 +202,7 @@ private:
         VARIABLES
     */
 
+    int frames;
     double _TP, _FP, _TN, _FN;
     float total_points_cloud;
     float removed_points;
@@ -258,12 +258,14 @@ private:
     user_defined user_defined_4;
     user_defined user_defined_5;
     user_defined user_defined_6;
+    user_defined user_defined_7;
     vector<float> user_defined_vec_1;
     vector<float> user_defined_vec_2;
     vector<float> user_defined_vec_3;
     vector<float> user_defined_vec_4;
     vector<float> user_defined_vec_5;
     vector<float> user_defined_vec_6;
+    vector<float> user_defined_vec_7;
 
     int total_points_ground;
     int total_points_non_ground;
@@ -280,13 +282,16 @@ Metrics<PointT>::Metrics( int no_usr_defined,
                           string user_name_3, 
                           string user_name_4, 
                           string user_name_5, 
-                          string user_name_6 ) 
+                          string user_name_6,
+                          string user_name_7 ) 
 {
 
     no_usr_defined_vec = no_usr_defined;
 
     switch (no_usr_defined_vec)
     {
+        case 7: user_defined_7.name = user_name_7;
+
         case 6: user_defined_6.name = user_name_6;
 
         case 5: user_defined_5.name = user_name_5;
@@ -452,7 +457,8 @@ void Metrics<PointT>::calculate_metrics(pcl::PointCloud<PointT> cloud_in,
                                         float user_3,
                                         float user_4,
                                         float user_5,
-                                        float user_6)
+                                        float user_6,
+                                        float user_7)
 {   
     frames++;
 
@@ -481,6 +487,7 @@ void Metrics<PointT>::calculate_metrics(pcl::PointCloud<PointT> cloud_in,
         user_defined_4.value = user_4;
         user_defined_5.value = user_5;
         user_defined_6.value = user_6;
+        user_defined_7.value = user_7;
     }    
 
     get_classes_in_cloud(cloud_ground, false);
@@ -524,103 +531,105 @@ void Metrics<PointT>::callback_shutdown(){
         std::cout << "Total points: " << static_cast<int>(std::accumulate(total_points_vec.begin(), total_points_vec.end(), 0.0) / total_points_vec.size()) << std::endl;
         std::cout << "Removed points: " << static_cast<int>(std::accumulate(removed_vec.begin(), removed_vec.end(), 0.0) / removed_vec.size()) << std::endl;
         std::cout << "----------------------" << std::endl;
-        std::cout << "Handler Time: " << (std::accumulate(htime_vec.begin(), htime_vec.end(), 0.0) / htime_vec.size()) << " ms" << std::endl;
-        std::cout << "Full Processing Time: " << (std::accumulate(ptime_vec.begin(), ptime_vec.end(), 0.0) / ptime_vec.size()) << " ms" << std::endl;
+        std::cout << "Handler Time: " << (std::accumulate(htime_vec.begin(), htime_vec.end(), 0.0) / htime_vec.size())/1000 << " ms" << std::endl;
+        std::cout << "Full Processing Time: " << (std::accumulate(ptime_vec.begin(), ptime_vec.end(), 0.0) / ptime_vec.size())/1000 << " ms" << std::endl;
         std::cout << "----------------------" << std::endl;
         switch (no_usr_defined_vec)
         {
-            case 6: std::cout << user_defined_6.name << ": " << (std::accumulate(user_defined_vec_6.begin(), user_defined_vec_6.end(), 0.0) / user_defined_vec_6.size())/1000 << " ms" << std::endl;
+            case 7: std::cout << user_defined_7.name << ": " << (std::accumulate(user_defined_vec_7.begin(), user_defined_vec_7.end(), 0.0) / user_defined_vec_7.size())/1000 << " us" << std::endl;
+
+            case 6: std::cout << user_defined_6.name << ": " << (std::accumulate(user_defined_vec_6.begin(), user_defined_vec_6.end(), 0.0) / user_defined_vec_6.size())/1000 << " us" << std::endl;
 
             case 5: std::cout << user_defined_5.name << ": "<< (std::accumulate(user_defined_vec_5.begin(), user_defined_vec_5.end(), 0.0) / user_defined_vec_5.size())/1000 << " ms" << std::endl;
 
             case 4: std::cout << user_defined_4.name << ": "<< (std::accumulate(user_defined_vec_4.begin(), user_defined_vec_4.end(), 0.0) / user_defined_vec_4.size())/1000 << " ms" << std::endl;
 
-            case 3: std::cout << user_defined_3.name << ": "<< (std::accumulate(user_defined_vec_3.begin(), user_defined_vec_3.end(), 0.0) / user_defined_vec_3.size())/1000 << " us" << std::endl;
+            case 3: std::cout << user_defined_3.name << ": "<< (std::accumulate(user_defined_vec_3.begin(), user_defined_vec_3.end(), 0.0) / user_defined_vec_3.size())/1000 << " ms" << std::endl;
 
             case 2: std::cout << user_defined_2.name << ": "<< (std::accumulate(user_defined_vec_2.begin(), user_defined_vec_2.end(), 0.0) / user_defined_vec_2.size())/1000 << " ms" << std::endl;
 
-            case 1: std::cout << user_defined_1.name << ": "<< (std::accumulate(user_defined_vec_1.begin(), user_defined_vec_1.end(), 0.0) / user_defined_vec_1.size())/1000 << " us" << std::endl;
+            case 1: std::cout << user_defined_1.name << ": "<< (std::accumulate(user_defined_vec_1.begin(), user_defined_vec_1.end(), 0.0) / user_defined_vec_1.size())/1000 << " ms" << std::endl;
                     break;
             
             default:break;
         }
         std::cout << "----------------------" << std::endl;
 
-        std::cout << std::endl;
-        std::cout << "----------------------" << std::endl;
-        std::cout << "This is ground!" << std::endl;
-        std::cout << "Number of frames: " << frames << std::endl;
-        std::cout << "Number of points: " << total_points_ground / frames << std::endl;
-        std::cout << "----------------------" << std::endl;
-        std::cout << "\t|   Class   |" << "       |            Subclass            |" << std::endl << std::endl;
+        // std::cout << std::endl;
+        // std::cout << "----------------------" << std::endl;
+        // std::cout << "This is ground!" << std::endl;
+        // std::cout << "Number of frames: " << frames << std::endl;
+        // std::cout << "Number of points: " << total_points_ground / frames << std::endl;
+        // std::cout << "----------------------" << std::endl;
+        // std::cout << "\t|   Class   |" << "       |            Subclass            |" << std::endl << std::endl;
 
-        for (auto it : total_classes_ground)
-        {
-            for (int i = 0; i < sizeof(labels)/sizeof(labels[0]); i++)
-            {
-                if(it.first == labels[i].val)
-                {
-                    if(i > 0 && labels[i].cls != labels[i-1].cls)
-                    {
-                        std::cout << std::endl;
-                    }
+        // for (auto it : total_classes_ground)
+        // {
+        //     for (int i = 0; i < sizeof(labels)/sizeof(labels[0]); i++)
+        //     {
+        //         if(it.first == labels[i].val)
+        //         {
+        //             if(i > 0 && labels[i].cls != labels[i-1].cls)
+        //             {
+        //                 std::cout << std::endl;
+        //             }
                         
-                    std::cout << "\t"
-                            << left
-                            << setfill(' ')
-                            << std::setw(20)
-                            << labels[i].cls
-                            << right
-                            << setfill(' ')
-                            << labels[i].msg
-                            << " ("
-                            << it.first    // string (key)
-                            << ") has "
-                            << (it.second / frames)   // string's value 
-                            << " points"
-                            << std::endl << std::flush;
-                    continue;
-                }
-            }
-        }
+        //             std::cout << "\t"
+        //                     << left
+        //                     << setfill(' ')
+        //                     << std::setw(20)
+        //                     << labels[i].cls
+        //                     << right
+        //                     << setfill(' ')
+        //                     << labels[i].msg
+        //                     << " ("
+        //                     << it.first    // string (key)
+        //                     << ") has "
+        //                     << (it.second / frames)   // string's value 
+        //                     << " points"
+        //                     << std::endl << std::flush;
+        //             continue;
+        //         }
+        //     }
+        // }
 
-        std::cout << std::endl;
-        std::cout << "----------------------" << std::endl;
-        std::cout << "This is non ground!" << std::endl;
-        std::cout << "Number of frames: " << frames << std::endl;
-        std::cout << "Number of points: " << total_points_non_ground / frames << std::endl;
-        std::cout << "----------------------" << std::endl;
-        std::cout << "\t|   Class   |" << "       |            Subclass            |" << std::endl << std::endl;
+        // std::cout << std::endl;
+        // std::cout << "----------------------" << std::endl;
+        // std::cout << "This is non ground!" << std::endl;
+        // std::cout << "Number of frames: " << frames << std::endl;
+        // std::cout << "Number of points: " << total_points_non_ground / frames << std::endl;
+        // std::cout << "----------------------" << std::endl;
+        // std::cout << "\t|   Class   |" << "       |            Subclass            |" << std::endl << std::endl;
 
-        for (auto it : total_classes_non_ground)
-        {
-            for (int i = 0; i < sizeof(labels)/sizeof(labels[0]); i++)
-            {
-                if(it.first == labels[i].val)
-                {
-                    if(i > 0 && labels[i].cls != labels[i-1].cls)
-                    {
-                        std::cout << std::endl;
-                    }
+        // for (auto it : total_classes_non_ground)
+        // {
+        //     for (int i = 0; i < sizeof(labels)/sizeof(labels[0]); i++)
+        //     {
+        //         if(it.first == labels[i].val)
+        //         {
+        //             if(i > 0 && labels[i].cls != labels[i-1].cls)
+        //             {
+        //                 std::cout << std::endl;
+        //             }
                         
-                    std::cout << "\t"
-                            << left
-                            << setfill(' ')
-                            << std::setw(20)
-                            << labels[i].cls
-                            << right
-                            << setfill(' ')
-                            << labels[i].msg
-                            << " ("
-                            << it.first    // string (key)
-                            << ") has "
-                            << (it.second / frames)   // string's value 
-                            << " points"
-                            << std::endl << std::flush;
-                    continue;
-                }
-            }
-        }
+        //             std::cout << "\t"
+        //                     << left
+        //                     << setfill(' ')
+        //                     << std::setw(20)
+        //                     << labels[i].cls
+        //                     << right
+        //                     << setfill(' ')
+        //                     << labels[i].msg
+        //                     << " ("
+        //                     << it.first    // string (key)
+        //                     << ") has "
+        //                     << (it.second / frames)   // string's value 
+        //                     << " points"
+        //                     << std::endl << std::flush;
+        //             continue;
+        //         }
+        //     }
+        // }
     }
     else
         std::cout << std::endl
@@ -629,46 +638,11 @@ void Metrics<PointT>::callback_shutdown(){
 
 template<typename PointT>
 inline
-void Metrics<PointT>::post_processing( alfa_msg::msg::AlfaMetrics &output_metrics,
-                                       alfa_msg::msg::MetricMessage handler_time,
+void Metrics<PointT>::post_processing( alfa_msg::msg::MetricMessage handler_time,
                                        alfa_msg::msg::MetricMessage full_time){
 
     htime_vec.push_back(handler_time.metric);
     ptime_vec.push_back(full_time.metric);
-
-    output_metrics.metrics.push_back(handler_time);
-    output_metrics.metrics.push_back(full_time);
-
-    output_metrics.metrics.push_back(fr);
-    output_metrics.metrics.push_back(total_points);
-    output_metrics.metrics.push_back(points_removed);
-    output_metrics.metrics.push_back(true_positive_rate);
-    output_metrics.metrics.push_back(true_negative_rate);
-    output_metrics.metrics.push_back(positive_predictive_value);
-    output_metrics.metrics.push_back(negative_predictive_value);
-    output_metrics.metrics.push_back(f1);
-
-    output_metrics.metrics.push_back(TP);
-    output_metrics.metrics.push_back(FP);
-    output_metrics.metrics.push_back(TN);
-    output_metrics.metrics.push_back(FN);
-
-    output_metrics.metrics.push_back(total_points_mean);
-    output_metrics.metrics.push_back(points_removed_mean);
-    output_metrics.metrics.push_back(TP_mean);
-    output_metrics.metrics.push_back(FP_mean);
-    output_metrics.metrics.push_back(TN_mean);
-    output_metrics.metrics.push_back(FN_mean);
-    output_metrics.metrics.push_back(true_positive_rate_mean);
-    output_metrics.metrics.push_back(true_positive_rate_dev);
-    output_metrics.metrics.push_back(true_negative_rate_mean);
-    output_metrics.metrics.push_back(true_negative_rate_dev);
-    output_metrics.metrics.push_back(positive_predictive_value_mean);
-    output_metrics.metrics.push_back(positive_predictive_value_dev);
-    output_metrics.metrics.push_back(negative_predictive_value_mean);
-    output_metrics.metrics.push_back(negative_predictive_value_dev);
-    output_metrics.metrics.push_back(f1_mean);
-    output_metrics.metrics.push_back(f1_dev);
 }
 
 template<typename PointT>
@@ -694,6 +668,8 @@ void Metrics<PointT>::publish_output_metrics(){
 
     switch (no_usr_defined_vec)
     {
+        case 7: user_defined_vec_7.push_back(user_defined_7.value);
+
         case 6: user_defined_vec_6.push_back(user_defined_6.value);
 
         case 5: user_defined_vec_5.push_back(user_defined_5.value);
@@ -830,9 +806,9 @@ int Metrics<PointT>::count_num_ground(const pcl::PointCloud<PointT>& pc){
   std::vector<int>::iterator iter;
 
   for (auto const& pt: pc.points){
-    iter = std::find(ground_class_with_terrain_and_veg.begin(), ground_class_with_terrain_and_veg.end(), pt.label);
+    iter = std::find(ground_class_with_terrain_and_veg.begin(), ground_class_with_terrain_and_veg.end(), (uint16_t)pt.custom_field);
     if (iter != ground_class_with_terrain_and_veg.end()){ // corresponding class is in ground classes
-      if (pt.label == VEGETATION){
+      if ((uint16_t)pt.custom_field == VEGETATION){
         if (pt.z < VEGETATION_THR){
            num_ground ++;
         }
@@ -841,7 +817,7 @@ int Metrics<PointT>::count_num_ground(const pcl::PointCloud<PointT>& pc){
   }
   return num_ground;
 }
-
+ 
 template<typename PointT>
 inline
 std::vector<pair<int,int>> Metrics<PointT>::set_initial_gt_counts(std::vector<int>& gt_classes){
@@ -862,11 +838,11 @@ std::vector<pair<int,int>> Metrics<PointT>::count_num_each_class(const pcl::Poin
   std::vector<int>::iterator iter;
 
   for (auto const pt: pc.points){
-    iter = std::find(all_classes.begin(), all_classes.end(), pt.label);
+    iter = std::find(all_classes.begin(), all_classes.end(), (uint16_t)pt.custom_field);
     if (iter != all_classes.end()){ // corresponding class is in all_classes
         for(auto& i : gt_counts)
         {
-          if(i.first == pt.label)
+          if(i.first == (uint16_t)pt.custom_field)
           {
               i.second++;
               continue;
