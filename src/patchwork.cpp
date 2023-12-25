@@ -9,7 +9,6 @@
 #include <pcl/point_types_conversion.h>
 
 #include "patchwork.hpp"
-#include "metrics.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -24,14 +23,8 @@ using PointType = AlfaPoint;
 using namespace std;
 
 boost::shared_ptr<PatchWork<PointType>> PatchworkGroundSeg;
-boost::shared_ptr<Metrics<PointType>> PatchworkMetrics;
 AlfaExtensionParameter parameters[30];
 int frames = 0;
-
-void callback_shutdown()
-{
-    PatchworkMetrics->callback_shutdown();
-}
 
 void publish_cloud(AlfaNode *node, pcl::PointCloud<PointType> pc_ground, pcl::PointCloud<PointType> pc_non_ground)
 {
@@ -88,18 +81,12 @@ void handler (AlfaNode * node)
 
     if(frames == 1)
         store_atat = time_taken_ATAT * 1000;
-
-    //pc2rgb(node, pc_ground, pc_non_ground);
+	
     publish_cloud(node, pc_ground, pc_non_ground);
-
-    PatchworkMetrics->calculate_metrics(*node->get_input_pointcloud(), pc_ground, pc_non_ground,
-                                        store_atat, time_taken_ERROR, time_taken_CZM * 1000,
-                                        time_taken_SORT,time_taken_RGPF,time_taken_GLE);
 }
 
 void post_processing (AlfaNode * node)
 {
-    PatchworkMetrics->post_processing(node->get_handler_time(), node->get_full_processing_time());
     node->publish_pointcloud();
 }
 
@@ -131,14 +118,6 @@ int main(int argc, char **argv)
     conf.number_of_debug_points = 1;
     conf.metrics_publishing_type = ALL_METRICS;
     conf.custom_field_conversion_type = CUSTOM_FIELD_LABEL;
-
-    PatchworkMetrics.reset(new Metrics<PointType>( 6,
-                                                            "Time taken for ATAT",
-                                                            "Time taken for Error Point Removal",
-                                                            "Time taken to CZM",
-                                                            "Time taken to Sort",
-                                                            "Time taken to R-GPF",
-                                                            "Time taken to GLE"));
 
     PatchworkGroundSeg.reset(new PatchWork<PointType>());
 
@@ -221,8 +200,6 @@ int main(int argc, char **argv)
 
     parameters[26].parameter_name = "show_non_ground_rgb";
     parameters[26].parameter_value = 1.0;
-
-    rclcpp::on_shutdown(&callback_shutdown);
 
     // Create an instance of AlfaNode and spin it
     rclcpp::spin(std::make_shared<AlfaNode>(conf, 
